@@ -1,0 +1,39 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>AI-SAST Audit Dashboard</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f9; margin: 30px; }
+            h1 { color: #1e293b; margin-bottom: 5px; }
+            .subtitle { color: #64748b; margin-bottom: 25px; }
+            .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+            .High { border-left: 6px solid #ef4444; }
+            .Medium { border-left: 6px solid #f59e0b; }
+            .Low { border-left: 6px solid #3b82f6; }
+            .badge { padding: 4px 10px; border-radius: 12px; color: white; font-weight: bold; font-size: 0.85em; background: #1e293b; float: right; }
+            pre { background: #1e293b; color: #f8fafc; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.9em; }
+            code { font-family: 'Courier New', Courier, monospace; }
+        </style>
+    </head>
+    <body>
+        <h1>🛡️ Hybrid AI-SAST Audit Report</h1>
+        <div class="subtitle">Target Directory: <code>/Users/user/Desktop/sast_project</code> | Total Verified Threat(s): 1</div>
+    
+        <div class="card High">
+            <span class="badge">High SEVERITY</span>
+            <h2>Code Execution Risk</h2>
+            <p><strong>File:</strong> <code>./test_app.py</code> (Line 12)</p>
+            <p><strong>AI Analysis:</strong> Using eval() on untrusted user input allows arbitrary code execution in the context of the running Python process.</p>
+            <h3>Vulnerable Code Snippet:</h3>
+            <pre><code>    
+    # 2. Real Code Execution Risk
+    eval(user_input)
+</code></pre>
+            <h3>Recommended Fix:</h3>
+            <pre><code>import ast
+
+# Use ast.literal_eval for safely parsing strings containing Python literals
+result = ast.literal_eval(user_input)</code></pre>
+        </div>
+        </body></html>
