@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state flags if not present
+# Initialize session state flags
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 if "current_user" not in st.session_state:
@@ -66,11 +66,28 @@ else:
     st.title("🛡️ Hybrid AI-SAST Security Engine")
     st.caption("Combining AST Rule-Based Static Analysis with Google Gemini AI Verification")
     
-    tab1, tab2, tab3 = st.tabs(["📝 Code Snippet Audit", "📁 Directory Scan", "ℹ️ About Engine"])
+    tab1, tab2, tab3 = st.tabs(["📝 Code & File Audit", "📁 Directory Scan", "ℹ️ About Engine"])
 
+    # -------------------------------------------------------------------------
+    # TAB 1: File Upload & Code Snippet Audit
+    # -------------------------------------------------------------------------
     with tab1:
-        st.subheader("Interactive Snippet Analysis")
-        sample_code = """import sqlite3
+        st.subheader("Audit Python File or Code Snippet")
+        
+        # File Uploader
+        uploaded_file = st.file_uploader("📂 Upload a .py file to scan", type=["py"])
+        
+        code_to_analyze = ""
+        
+        if uploaded_file is not None:
+            code_to_analyze = uploaded_file.getvalue().decode("utf-8")
+            st.info(f"Loaded uploaded file: **{uploaded_file.name}**")
+            with st.expander("Preview Uploaded Code", expanded=True):
+                st.code(code_to_analyze, language="python")
+        else:
+            st.markdown("---")
+            st.write("Or paste raw Python code snippet directly below:")
+            sample_code = """import sqlite3
 
 def login_user(username, password):
 conn = sqlite3.connect('users.db')
@@ -80,17 +97,17 @@ query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{pas
 cursor.execute(query)
 return cursor.fetchone()
 """
-        code_input = st.text_area("Python Source Code", value=sample_code, height=220)
+            code_to_analyze = st.text_area("Python Source Code", value=sample_code, height=200)
 
         if st.button("🔍 Run Security Audit", type="primary"):
-            if not code_input.strip():
-                st.warning("Please paste some code to analyze.")
+            if not code_to_analyze.strip():
+                st.warning("Please upload a file or paste some code to analyze.")
             else:
-                with st.status("Analyzing code snippet...", expanded=True) as status:
+                with st.status("Analyzing code...", expanded=True) as status:
                     st.write("⚙️ Stage 1: Running AST Rule Engine...")
                     temp_filename = "_temp_snippet.py"
                     with open(temp_filename, "w", encoding="utf-8") as f:
-                        f.write(code_input)
+                        f.write(code_to_analyze)
 
                     raw_findings = run_ast_scanner(temp_filename)
                     if os.path.exists(temp_filename):
@@ -135,6 +152,9 @@ return cursor.fetchone()
                                     st.markdown("##### ✅ AI Remediated Code")
                                     st.code(ai_result.remediated_code, language="python")
 
+    # -------------------------------------------------------------------------
+    # TAB 2: Directory Scan
+    # -------------------------------------------------------------------------
     with tab2:
         st.subheader("Repository Directory Scan")
         target_dir = st.text_input("Enter Repository Path", value=".")
@@ -156,6 +176,9 @@ return cursor.fetchone()
                                 st.markdown(f"**Flaw:** `{flaw.get('flaw_type')}` | **Line:** {flaw.get('line')}")
                                 st.code(flaw.get('code_snippet'), language="python")
 
+    # -------------------------------------------------------------------------
+    # TAB 3: About
+    # -------------------------------------------------------------------------
     with tab3:
         st.subheader("About the Hybrid AI-SAST Engine")
         st.markdown("""
