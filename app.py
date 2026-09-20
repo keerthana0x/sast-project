@@ -11,26 +11,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Initialize session state flags if not present
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+if "current_user" not in st.session_state:
+    st.session_state["current_user"] = None
+
 # 2. Authentication Function
-def check_password():
-    def password_entered():
-        user = st.session_state.get("username", "")
-        pwd = st.session_state.get("password", "")
-        valid_users = {
-            "admin": "cyber2026",
-            "evaluator": "sast_demo_2026"
-        }
-        if user in valid_users and hmac.compare_digest(pwd, valid_users[user]):
-            st.session_state["password_correct"] = True
-            st.session_state["current_user"] = user
-            if "password" in st.session_state:
-                del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if st.session_state.get("password_correct", False):
-        return True
-
+def show_login_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<h1 style='text-align: center;'>🛡️ Hybrid AI-SAST Engine</h1>", unsafe_allow_html=True)
@@ -38,22 +26,32 @@ def check_password():
         st.caption("<p style='text-align: center;'>Authenticate to access the Static Application Security Testing Suite.</p>", unsafe_allow_html=True)
         
         with st.form("login_form"):
-            st.text_input("Username", key="username")
-            st.text_input("Password", type="password", key="password")
+            user = st.text_input("Username")
+            pwd = st.text_input("Password", type="password")
             submit = st.form_submit_button("Log In", use_container_width=True)
 
-        if st.session_state.get("password_correct") == False:
-            st.error("❌ Invalid Username or Password")
-
-    return False
+            if submit:
+                valid_users = {
+                    "admin": "cyber2026",
+                    "evaluator": "sast_demo_2026"
+                }
+                if user in valid_users and hmac.compare_digest(pwd, valid_users[user]):
+                    st.session_state["logged_in"] = True
+                    st.session_state["current_user"] = user
+                    st.success("✅ Login successful! Redirecting...")
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid Username or Password")
 
 # 3. Main Application Dashboard
-if check_password():
+if not st.session_state["logged_in"]:
+    show_login_page()
+else:
     with st.sidebar:
         st.title("SAST Control Panel")
         st.write(f"👤 Active User: **{st.session_state.get('current_user', 'User')}**")
         
-        gemini_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", None)
+        gemini_key = os.getenv("GEMINI_API_KEY") or getattr(getattr(st, "secrets", None), "GEMINI_API_KEY", None)
         if gemini_key:
             st.success("🟢 Gemini API Key Loaded")
         else:
@@ -61,7 +59,8 @@ if check_password():
             
         st.markdown("---")
         if st.button("🚪 Log Out", use_container_width=True):
-            st.session_state["password_correct"] = False
+            st.session_state["logged_in"] = False
+            st.session_state["current_user"] = None
             st.rerun()
 
     st.title("🛡️ Hybrid AI-SAST Security Engine")
