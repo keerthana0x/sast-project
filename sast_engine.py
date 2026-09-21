@@ -70,11 +70,11 @@ def scan_directory_recursively(directory_path: str) -> List[Dict[str, Any]]:
     return results
 
 
-# 2. Gemini GenAI Verification (Handles SDK + Direct REST API Fallback)
+# 2. Gemini GenAI Verification
 class AIVerificationResult(BaseModel):
-    is_vulnerability: bool = Field(description="True if flagged issue is a real vulnerability, False if false positive")
-    explanation: str = Field(description="Detailed technical reasoning for the determination")
-    remediated_code: str = Field(description="Secure, refactored version of the Python code snippet")
+    is_vulnerability: bool = Field(description="True if flagged issue is a real vulnerability")
+    explanation: str = Field(description="Detailed technical reasoning")
+    remediated_code: str = Field(description="Secure refactored Python code")
 
 
 def verify_flaw_with_ai(flaw_type: str, snippet: str, line_no: int) -> Optional[AIVerificationResult]:
@@ -90,21 +90,25 @@ def verify_flaw_with_ai(flaw_type: str, snippet: str, line_no: int) -> Optional[
     if not api_key:
         return AIVerificationResult(
             is_vulnerability=True,
-            explanation="Gemini API Key missing in Streamlit Secrets.",
-            remediated_code="# Configure GEMINI_API_KEY in Streamlit Secrets to view AI fixes."
+            explanation="GEMINI_API_KEY is not configured in Streamlit Secrets.",
+            remediated_code="# Please add GEMINI_API_KEY in Streamlit Secrets."
         )
 
-    prompt_text = f"""You are an expert SAST security auditor.
-Analyze this Python security issue:
+    prompt_text = f"""
+You are an expert static application security testing (SAST) auditor.
+An AST engine flagged a potential security flaw in Python code:
+
 Flaw Type: {flaw_type}
 Line Number: {line_no}
 Code Snippet:
 {snippet}
 
-Provide a JSON object response with exactly these keys:
-"is_vulnerability": true or false,
-"explanation": "detailed reasoning",
-"remediated_code": "secure refactored python code"
+Perform security verification:
+1. Determine if this is a genuine vulnerability or a false positive.
+2. Provide a technical explanation.
+3. Provide secure, production-ready remediated Python code to fix it.
+
+Respond strictly in valid JSON format with keys "is_vulnerability", "explanation", and "remediated_code".
 """
 
     # Method 1: Try official google-genai SDK
@@ -120,10 +124,10 @@ Provide a JSON object response with exactly these keys:
             }
         )
         return AIVerificationResult.model_validate_json(response.text)
-    except Exception:
+    except Exception as sdk_err:
         pass
 
-    # Method 2: Direct REST API call (Supports AQ.* and non-standard key formats)
+    # Method 2: Direct REST Call using v1beta endpoint
     for model_name in ['gemini-2.5-flash', 'gemini-1.5-flash']:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
@@ -140,8 +144,8 @@ Provide a JSON object response with exactly these keys:
                 parsed = json.loads(text_content)
                 return AIVerificationResult(
                     is_vulnerability=parsed.get("is_vulnerability", True),
-                    explanation=parsed.get("explanation", "Verified via Direct REST API."),
-                    remediated_code=parsed.get("remediated_code", "# Code fix generated successfully.")
+                    explanation=parsed.get("explanation", "Verified via Gemini API."),
+                    remediated_code=parsed.get("remediated_code", "# Secure code generated.")
                 )
         except Exception as err:
             last_err = str(err)
@@ -149,6 +153,6 @@ Provide a JSON object response with exactly these keys:
 
     return AIVerificationResult(
         is_vulnerability=True,
-        explanation=f"AI verification error: {last_err}. Check your API key in Streamlit secrets.",
-        remediated_code="# Error generating AI fix."
+        explanation=f"Gemini API Error: {last_err}. Verify API key configuration.",
+        remediated_code="# Error generating AI code fix."
     )
