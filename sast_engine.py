@@ -116,8 +116,8 @@ Perform security verification:
 Respond STRICTLY with a valid JSON object with keys "is_vulnerability", "explanation", and "remediated_code".
 """
 
-    # Use standard stable Gemini model endpoints
-    candidate_models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash']
+    # Active supported models array
+    candidate_models = ['gemini-3.6-flash', 'gemini-1.5-flash']
     last_err = ""
 
     try:
