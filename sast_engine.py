@@ -115,33 +115,43 @@ Perform security verification:
 Respond STRICTLY with a valid JSON object with keys "is_vulnerability", "explanation", and "remediated_code".
 """
 
+    # Try modern gemini-3.6-flash first, then fallback to gemini-1.5-flash
+    candidate_models = ['gemini-3.6-flash', 'gemini-1.5-flash']
+    last_err = ""
+
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
         
-        # Call modern SDK endpoint
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt_text,
-            config={'response_mime_type': 'application/json'}
-        )
-        
-        text = response.text
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
-        if json_match:
-            parsed = json.loads(json_match.group(0))
-        else:
-            parsed = json.loads(text)
+        for model_id in candidate_models:
+            try:
+                response = client.models.generate_content(
+                    model=model_id,
+                    contents=prompt_text,
+                    config={'response_mime_type': 'application/json'}
+                )
+                
+                text = response.text
+                json_match = re.search(r'\{.*\}', text, re.DOTALL)
+                if json_match:
+                    parsed = json.loads(json_match.group(0))
+                else:
+                    parsed = json.loads(text)
 
-        return AIVerificationResult(
-            is_vulnerability=parsed.get("is_vulnerability", True),
-            explanation=parsed.get("explanation", "Verified successfully via Gemini."),
-            remediated_code=parsed.get("remediated_code", "# Secure code generated.")
-        )
+                return AIVerificationResult(
+                    is_vulnerability=parsed.get("is_vulnerability", True),
+                    explanation=parsed.get("explanation", "Verified successfully via Gemini."),
+                    remediated_code=parsed.get("remediated_code", "# Secure code generated.")
+                )
+            except Exception as e:
+                last_err = str(e)
+                continue
 
-    except Exception as e:
-        return AIVerificationResult(
-            is_vulnerability=True,
-            explanation=f"Gemini API Execution Error: {str(e)}",
-            remediated_code="# Error generating AI fix."
-        )
+    except Exception as top_e:
+        last_err = str(top_e)
+
+    return AIVerificationResult(
+        is_vulnerability=True,
+        explanation=f"Gemini API Error: {last_err}",
+        remediated_code="# Error generating AI fix."
+    )
