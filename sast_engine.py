@@ -3,6 +3,7 @@ import os
 import json
 import re
 from typing import List, Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
 from pydantic import BaseModel, Field
 
 # =========================================================================
@@ -115,8 +116,8 @@ Perform security verification:
 Respond STRICTLY with a valid JSON object with keys "is_vulnerability", "explanation", and "remediated_code".
 """
 
-    # Try modern gemini-3.6-flash first, then fallback to gemini-1.5-flash
-    candidate_models = ['gemini-3.6-flash', 'gemini-1.5-flash']
+    # Use standard stable Gemini model endpoints
+    candidate_models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash']
     last_err = ""
 
     try:
@@ -155,3 +156,20 @@ Respond STRICTLY with a valid JSON object with keys "is_vulnerability", "explana
         explanation=f"Gemini API Error: {last_err}",
         remediated_code="# Error generating AI fix."
     )
+
+
+def verify_all_findings_parallel(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Runs AI verification on all findings concurrently."""
+    def process_item(item):
+        ai_res = verify_flaw_with_ai(
+            item['flaw_type'],
+            item['code_snippet'],
+            item['line']
+        )
+        item['ai_verification'] = ai_res
+        return item
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        verified_results = list(executor.map(process_item, findings))
+    
+    return verified_results
