@@ -1,11 +1,14 @@
 import ast
 import os
 import json
+import re
 import urllib.request
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-# 1. AST Rule-Based Static Scanner
+# =========================================================================
+# 1. AST RULE ENGINE
+# =========================================================================
 class ASTVisitor(ast.NodeVisitor):
     def __init__(self):
         self.findings = []
@@ -70,7 +73,9 @@ def scan_directory_recursively(directory_path: str) -> List[Dict[str, Any]]:
     return results
 
 
-# 2. Gemini GenAI Verification
+# =========================================================================
+# 2. GEMINI AI VERIFICATION ENGINE
+# =========================================================================
 class AIVerificationResult(BaseModel):
     is_vulnerability: bool = Field(description="True if flagged issue is a real vulnerability")
     explanation: str = Field(description="Detailed technical reasoning")
@@ -90,8 +95,8 @@ def verify_flaw_with_ai(flaw_type: str, snippet: str, line_no: int) -> Optional[
     if not api_key:
         return AIVerificationResult(
             is_vulnerability=True,
-            explanation="GEMINI_API_KEY is not configured in Streamlit Secrets.",
-            remediated_code="# Please add GEMINI_API_KEY in Streamlit Secrets."
+            explanation="Missing GEMINI_API_KEY in Streamlit Secrets.",
+            remediated_code="# Add GEMINI_API_KEY in Streamlit Secrets."
         )
 
     prompt_text = f"""
@@ -108,51 +113,79 @@ Perform security verification:
 2. Provide a technical explanation.
 3. Provide secure, production-ready remediated Python code to fix it.
 
-Respond strictly in valid JSON format with keys "is_vulnerability", "explanation", and "remediated_code".
+Respond STRICTLY with raw JSON matching this structure:
+{{
+"is_vulnerability": true,
+"explanation": "Explanation here",
+"remediated_code": "Code here"
+}}
 """
 
-    # Method 1: Try official google-genai SDK
+    # Supported endpoint models to try sequentially
+    working_models = ['gemini-2.0-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-flash', 'gemini-2.5-flash']
+    last_error = ""
+
+    # Method 1: Try official SDK if available
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt_text,
-            config={
-                'response_mime_type': 'application/json',
-                'response_schema': AIVerificationResult,
-            }
-        )
-        return AIVerificationResult.model_validate_json(response.text)
-    except Exception as sdk_err:
+        for m in working_models:
+            try:
+                res = client.models.generate_content(
+                    model=m,
+                    contents=prompt_text,
+                    config={'response_mime_type': 'application/json'}
+                )
+                parsed = json.loads(res.text)
+                return AIVerificationResult(
+                    is_vulnerability=parsed.get("is_vulnerability", True),
+                    explanation=parsed.get("explanation", "Verified by Gemini SDK."),
+                    remediated_code=parsed.get("remediated_code", "# Secure code generated.")
+                )
+            except Exception as e:
+                last_error = str(e)
+                continue
+    except Exception:
         pass
 
-    # Method 2: Direct REST Call using v1beta endpoint
-    for model_name in ['gemini-2.5-flash', 'gemini-1.5-flash']:
+    # Method 2: Fail-safe REST API using native urllib
+    for model_name in working_models:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
                 "contents": [{"parts": [{"text": prompt_text}]}],
-                "generationConfig": {"response_mime_type": "application/json"}
+                "generationConfig": {"responseMimeType": "application/json"}
             }
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
             
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                result_json = json.loads(resp.read().decode("utf-8"))
-                text_content = result_json["candidates"][0]["content"]["parts"][0]["text"]
-                parsed = json.loads(text_content)
+            with urllib.request.urlopen(req, timeout=12) as response:
+                res_json = json.loads(response.read().decode("utf-8"))
+                text = res_json["candidates"][0]["content"]["parts"][0]["text"]
+                
+                # Extract JSON payload even if wrapped in markdown blocks
+                json_match = re.search(r'\{.*\}', text, re.DOTALL)
+                if json_match:
+                    parsed = json.loads(json_match.group(0))
+                else:
+                    parsed = json.loads(text)
+
                 return AIVerificationResult(
                     is_vulnerability=parsed.get("is_vulnerability", True),
-                    explanation=parsed.get("explanation", "Verified via Gemini API."),
-                    remediated_code=parsed.get("remediated_code", "# Secure code generated.")
+                    explanation=parsed.get("explanation", "Verified successfully via Gemini."),
+                    remediated_code=parsed.get("remediated_code", "# Secure refactored code.")
                 )
-        except Exception as err:
-            last_err = str(err)
-            continue
+        except urllib.error.HTTPError as h_err:
+            try:
+                err_body = h_err.read().decode("utf-8")
+                last_error = f"{model_name} HTTP {h_err.code}: {err_body}"
+            except Exception:
+                last_error = f"{model_name} HTTP {h_err.code}"
+        except Exception as gen_err:
+            last_error = f"{model_name}: {str(gen_err)}"
 
     return AIVerificationResult(
         is_vulnerability=True,
-        explanation=f"Gemini API Error: {last_err}. Verify API key configuration.",
-        remediated_code="# Error generating AI code fix."
+        explanation=f"AI API Connection Error: {last_error}",
+        remediated_code="# Fix API key in Streamlit Secrets or select an active model."
     )
