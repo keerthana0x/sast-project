@@ -11,41 +11,70 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state flags
+# Initialize session state for user database and authentication state
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 if "current_user" not in st.session_state:
     st.session_state["current_user"] = None
+if "registered_users" not in st.session_state:
+    # Pre-seed default demo accounts
+    st.session_state["registered_users"] = {
+        "admin": "cyber2026",
+        "evaluator": "sast_demo_2026"
+    }
 
-# 2. Authentication Function
-def show_login_page():
+# 2. Authentication Screen (Log In & Sign Up)
+def show_auth_page():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<h1 style='text-align: center;'>🛡️ Hybrid AI-SAST Engine</h1>", unsafe_allow_html=True)
         st.markdown("<h3 style='text-align: center;'>🔐 Cybersecurity Portal Access</h3>", unsafe_allow_html=True)
-        st.caption("<p style='text-align: center;'>Authenticate to access the Static Application Security Testing Suite.</p>", unsafe_allow_html=True)
+        st.caption("<p style='text-align: center;'>Authenticate or register an account to access the Security Testing Suite.</p>", unsafe_allow_html=True)
         
-        with st.form("login_form"):
-            user = st.text_input("Username")
-            pwd = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Log In", use_container_width=True)
+        auth_tab1, auth_tab2 = st.tabs(["🔑 Log In", "📝 Sign Up"])
 
-            if submit:
-                valid_users = {
-                    "admin": "cyber2026",
-                    "evaluator": "sast_demo_2026"
-                }
-                if user in valid_users and hmac.compare_digest(pwd, valid_users[user]):
-                    st.session_state["logged_in"] = True
-                    st.session_state["current_user"] = user
-                    st.success("✅ Login successful! Redirecting...")
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid Username or Password")
+        # TAB 1: LOG IN
+        with auth_tab1:
+            with st.form("login_form"):
+                user = st.text_input("Username")
+                pwd = st.text_input("Password", type="password")
+                submit = st.form_submit_button("Log In", use_container_width=True)
 
-# 3. Main Application Dashboard
+                if submit:
+                    users_db = st.session_state["registered_users"]
+                    if user in users_db and hmac.compare_digest(pwd, users_db[user]):
+                        st.session_state["logged_in"] = True
+                        st.session_state["current_user"] = user
+                        st.success("✅ Login successful! Redirecting...")
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid Username or Password")
+
+        # TAB 2: SIGN UP
+        with auth_tab2:
+            with st.form("signup_form"):
+                new_user = st.text_input("Choose Username")
+                new_pwd = st.text_input("Choose Password", type="password")
+                confirm_pwd = st.text_input("Confirm Password", type="password")
+                signup_submit = st.form_submit_button("Create Account", use_container_width=True)
+
+                if signup_submit:
+                    if not new_user.strip():
+                        st.error("❌ Username cannot be empty.")
+                    elif new_user in st.session_state["registered_users"]:
+                        st.error("❌ Username already exists! Please pick another or log in.")
+                    elif not new_pwd:
+                        st.error("❌ Password cannot be empty.")
+                    elif new_pwd != confirm_pwd:
+                        st.error("❌ Passwords do not match.")
+                    else:
+                        # Register user in session memory
+                        st.session_state["registered_users"][new_user] = new_pwd
+                        st.success("🎉 Account created successfully! Switch to the 'Log In' tab to log in.")
+
+# 3. Main Dashboard Rendering Logic
 if not st.session_state["logged_in"]:
-    show_login_page()
+    show_auth_page()
 else:
     with st.sidebar:
         st.title("SAST Control Panel")
@@ -74,9 +103,7 @@ else:
     with tab1:
         st.subheader("Audit Python File or Code Snippet")
         
-        # File Uploader
         uploaded_file = st.file_uploader("📂 Upload a .py file to scan", type=["py"])
-        
         code_to_analyze = ""
         
         if uploaded_file is not None:
@@ -92,7 +119,6 @@ else:
 def login_user(username, password):
 conn = sqlite3.connect('users.db')
 cursor = conn.cursor()
-# Unsafe raw string query formatting
 query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
 cursor.execute(query)
 return cursor.fetchone()
